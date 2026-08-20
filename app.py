@@ -2,7 +2,6 @@ from flask import Flask, render_template, request, jsonify
 from ultralytics import YOLO
 import os
 import cv2
-import time
 import uuid
 
 app = Flask(__name__)
@@ -64,31 +63,54 @@ def detect():
 
         frame_count += 1
 
-        # Process every 3rd frame to reduce CPU usage
+        # Process every 3rd frame
         if frame_count % 3 != 0:
             continue
 
-        results = model(frame, verbose=False)
+        # YOLO vehicle tracking
+        results = model.track(
+            frame,
+            persist=True,
+            tracker="bytetrack.yaml",
+            verbose=False
+        )
 
         for result in results:
-            for box in result.boxes:
+            boxes = result.boxes
+
+            for box in boxes:
                 class_id = int(box.cls[0])
                 confidence = float(box.conf[0])
 
-                if class_id in VEHICLE_CLASSES and confidence >= 0.40:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                if class_id not in VEHICLE_CLASSES:
+                    continue
 
-                    detected.append({
-                        "type": VEHICLE_CLASSES[class_id],
-                        "confidence": round(confidence, 2),
-                        "x": (x1 + x2) // 2,
-                        "y": (y1 + y2) // 2,
-                        "frame": frame_count
-                    })
+                if confidence < 0.40:
+                    continue
+
+                x1, y1, x2, y2 = map(
+                    int,
+                    box.xyxy[0]
+                )
+
+                # Tracking ID
+                track_id = None
+
+                if box.id is not None:
+                    track_id = int(box.id[0])
+
+                detected.append({
+                    "id": track_id,
+                    "type": VEHICLE_CLASSES[class_id],
+                    "confidence": round(confidence, 2),
+                    "x": (x1 + x2) // 2,
+                    "y": (y1 + y2) // 2,
+                    "frame": frame_count,
+                    "time": round(frame_count / fps, 3)
+                })
 
     cap.release()
 
-    # Remove uploaded video after processing
     try:
         os.remove(filepath)
     except OSError:
@@ -99,7 +121,7 @@ def detect():
         "fps": fps,
         "frames": frame_count,
         "vehicles": detected,
-        "message": "Vehicle detection completed"
+        "message": "Vehicle detection and tracking completed"
     })
 
 
@@ -107,6 +129,7 @@ def detect():
 def status():
     return jsonify({
         "detector": "YOLO",
+        "tracker": "ByteTrack",
         "vehicles": list(VEHICLE_CLASSES.values()),
         "camera": "browser camera supported",
         "speed_detection": "estimated"
@@ -118,4 +141,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=int(os.environ.get("PORT", 5000)),
         debug=False
-                )
+    )
