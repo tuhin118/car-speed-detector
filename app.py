@@ -38,22 +38,45 @@ def detect():
         return jsonify({"error": "No file selected"}), 400
 
     filename = f"{uuid.uuid4().hex}.mp4"
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    filepath = os.path.join(
+        app.config["UPLOAD_FOLDER"],
+        filename
+    )
 
     video.save(filepath)
 
     cap = cv2.VideoCapture(filepath)
 
     if not cap.isOpened():
-        return jsonify({"error": "Could not open video"}), 400
+        return jsonify({
+            "error": "Could not open video"
+        }), 400
 
     fps = cap.get(cv2.CAP_PROP_FPS)
 
     if not fps or fps <= 0:
         fps = 30
 
+    # Calibration distance in meters.
+    # The frontend can send this value.
+    try:
+        calibration_distance = float(
+            request.form.get(
+                "calibration_distance",
+                10
+            )
+        )
+    except (TypeError, ValueError):
+        calibration_distance = 10.0
+
+    if calibration_distance <= 0:
+        calibration_distance = 10.0
+
     frame_count = 0
     detected = []
+
+    # Previous position of each tracked vehicle
+    previous_positions = {}
 
     while True:
         success, frame = cap.read()
@@ -67,7 +90,6 @@ def detect():
         if frame_count % 3 != 0:
             continue
 
-        # YOLO vehicle tracking
         results = model.track(
             frame,
             persist=True,
@@ -75,10 +97,13 @@ def detect():
             verbose=False
         )
 
+        current_time = frame_count / fps
+
         for result in results:
             boxes = result.boxes
 
             for box in boxes:
+
                 class_id = int(box.cls[0])
                 confidence = float(box.conf[0])
 
@@ -93,20 +118,88 @@ def detect():
                     box.xyxy[0]
                 )
 
-                # Tracking ID
+                center_x = (x1 + x2) / 2
+                center_y = (y1 + y2) / 2
+
                 track_id = None
 
                 if box.id is not None:
                     track_id = int(box.id[0])
 
+                estimated_speed = 0.0
+
+                if track_id is not None:
+
+                    if track_id in previous_positions:
+
+                        old_x, old_y, old_time = (
+                            previous_positions[track_id]
+                        )
+
+                        time_difference = (
+                            current_time - old_time
+                        )
+
+                        if time_difference > 0:
+
+                            pixel_distance = (
+                                (
+                                    (center_x - old_x) ** 2
+                                )
+                                +
+                                (
+                                    (center_y - old_y) ** 2
+                                )
+                            ) ** 0.5
+
+                            # Approximate camera calibration.
+                            # This is an estimate, not GPS-grade speed.
+                            meters_per_pixel = (
+                                calibration_distance / 500.0
+                            )
+
+                            distance_meters = (
+                                pixel_distance
+                                * meters_per_pixel
+                            )
+
+                            meters_per_second = (
+                                distance_meters
+                                / time_difference
+                            )
+
+                            estimated_speed = (
+                                meters_per_second * 3.6
+                            )
+
+                            # Ignore unrealistic values
+                            if estimated_speed > 200:
+                                estimated_speed = 0.0
+
+                    previous_positions[track_id] = (
+                        center_x,
+                        center_y,
+                        current_time
+                    )
+
                 detected.append({
                     "id": track_id,
                     "type": VEHICLE_CLASSES[class_id],
-                    "confidence": round(confidence, 2),
-                    "x": (x1 + x2) // 2,
-                    "y": (y1 + y2) // 2,
+                    "confidence": round(
+                        confidence,
+                        2
+                    ),
+                    "x": int(center_x),
+                    "y": int(center_y),
                     "frame": frame_count,
-                    "time": round(frame_count / fps, 3)
+                    "time": round(
+                        current_time,
+                        3
+                    ),
+                    "speed": round(
+                        estimated_speed,
+                        1
+                    )
                 })
 
     cap.release()
@@ -120,8 +213,9 @@ def detect():
         "status": "success",
         "fps": fps,
         "frames": frame_count,
+        "calibration_distance": calibration_distance,
         "vehicles": detected,
-        "message": "Vehicle detection and tracking completed"
+        "message": "Vehicle detection, tracking and estimated speed completed"
     })
 
 
@@ -130,7 +224,9 @@ def status():
     return jsonify({
         "detector": "YOLO",
         "tracker": "ByteTrack",
-        "vehicles": list(VEHICLE_CLASSES.values()),
+        "vehicles": list(
+            VEHICLE_CLASSES.values()
+        ),
         "camera": "browser camera supported",
         "speed_detection": "estimated"
     })
@@ -139,6 +235,11 @@ def status():
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000)),
+        port=int(
+            os.environ.get(
+                "PORT",
+                5000
+            )
+        ),
         debug=False
     )
