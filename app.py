@@ -1,6 +1,9 @@
 from flask import Flask, render_template, request, jsonify
 from ultralytics import YOLO
 import os
+import cv2
+import time
+import uuid
 
 app = Flask(__name__)
 
@@ -8,12 +11,10 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
-# YOLO model
 model = YOLO("yolo11n.pt")
 
-# Vehicle classes in COCO
 VEHICLE_CLASSES = {
     2: "car",
     3: "motorcycle",
@@ -37,14 +38,68 @@ def detect():
     if video.filename == "":
         return jsonify({"error": "No file selected"}), 400
 
-    filename = video.filename
+    filename = f"{uuid.uuid4().hex}.mp4"
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+
     video.save(filepath)
+
+    cap = cv2.VideoCapture(filepath)
+
+    if not cap.isOpened():
+        return jsonify({"error": "Could not open video"}), 400
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+
+    if not fps or fps <= 0:
+        fps = 30
+
+    frame_count = 0
+    detected = []
+
+    while True:
+        success, frame = cap.read()
+
+        if not success:
+            break
+
+        frame_count += 1
+
+        # Process every 3rd frame to reduce CPU usage
+        if frame_count % 3 != 0:
+            continue
+
+        results = model(frame, verbose=False)
+
+        for result in results:
+            for box in result.boxes:
+                class_id = int(box.cls[0])
+                confidence = float(box.conf[0])
+
+                if class_id in VEHICLE_CLASSES and confidence >= 0.40:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+
+                    detected.append({
+                        "type": VEHICLE_CLASSES[class_id],
+                        "confidence": round(confidence, 2),
+                        "x": (x1 + x2) // 2,
+                        "y": (y1 + y2) // 2,
+                        "frame": frame_count
+                    })
+
+    cap.release()
+
+    # Remove uploaded video after processing
+    try:
+        os.remove(filepath)
+    except OSError:
+        pass
 
     return jsonify({
         "status": "success",
-        "filename": filename,
-        "message": "Video uploaded successfully"
+        "fps": fps,
+        "frames": frame_count,
+        "vehicles": detected,
+        "message": "Vehicle detection completed"
     })
 
 
@@ -63,4 +118,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=int(os.environ.get("PORT", 5000)),
         debug=False
-    )
+                )
