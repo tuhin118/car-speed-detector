@@ -1,1 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Speed Detector</title>
 
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: white;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .camera-box {
+            background: #020617;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid #334155;
+        }
+
+        video {
+            width: 100%;
+            display: block;
+            background: black;
+            min-height: 250px;
+            object-fit: cover;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        button {
+            flex: 1;
+            min-width: 140px;
+            padding: 13px;
+            border: none;
+            border-radius: 10px;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .stop {
+            background: #dc2626;
+        }
+
+        .stop:hover {
+            background: #b91c1c;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background: #1e293b;
+            border-radius: 12px;
+        }
+
+        .speed {
+            text-align: center;
+            margin-top: 20px;
+            padding: 25px;
+            background: #1e293b;
+            border-radius: 15px;
+        }
+
+        .speed-value {
+            font-size: 48px;
+            font-weight: bold;
+            color: #38bdf8;
+        }
+
+        .unit {
+            font-size: 18px;
+            color: #cbd5e1;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 12px;
+            }
+
+            h1 {
+                font-size: 25px;
+            }
+
+            .speed-value {
+                font-size: 40px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>🚗 Car Speed Detector</h1>
+
+    <div class="camera-box">
+        <video id="camera" autoplay playsinline></video>
+    </div>
+
+    <div class="controls">
+        <button onclick="startCamera()">📷 Start Camera</button>
+        <button class="stop" onclick="stopCamera()">⛔ Stop Camera</button>
+    </div>
+
+    <div class="status">
+        <strong>Status:</strong>
+        <span id="status">Camera is not running</span>
+    </div>
+
+    <div class="speed">
+        <div>Detected Speed</div>
+
+        <div class="speed-value" id="speed">
+            0
+        </div>
+
+        <div class="unit">
+            km/h
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const video = document.getElementById("camera");
+    const statusText = document.getElementById("status");
+
+    let stream = null;
+
+    async function startCamera() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: "environment"
+                },
+                audio: false
+            });
+
+            video.srcObject = stream;
+            statusText.textContent = "Camera is running";
+
+        } catch (error) {
+            console.error(error);
+            statusText.textContent =
+                "Camera permission was denied or camera is unavailable.";
+        }
+    }
+
+    function stopCamera() {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+
+        video.srcObject = null;
+        statusText.textContent = "Camera stopped";
+    }
+</script>
+
+</body>
+</html>
