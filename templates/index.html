@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Car Speed Detector</title>
 
     <style>
@@ -81,6 +82,26 @@
             border-radius: 12px;
         }
 
+        .calibration {
+            margin-top: 20px;
+            padding: 18px;
+            background: #1e293b;
+            border-radius: 12px;
+        }
+
+        .calibration label {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .calibration input {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
         .speed {
             text-align: center;
             margin-top: 20px;
@@ -98,6 +119,19 @@
         .unit {
             font-size: 18px;
             color: #cbd5e1;
+        }
+
+        .vehicle-list {
+            margin-top: 20px;
+        }
+
+        .vehicle {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            margin-top: 8px;
+            background: #334155;
+            border-radius: 8px;
         }
 
         @media (max-width: 600px) {
@@ -136,8 +170,24 @@
         <span id="status">Camera is not running</span>
     </div>
 
+    <div class="calibration">
+        <label for="distance">
+            Calibration distance (meters)
+        </label>
+
+        <input
+            id="distance"
+            type="number"
+            min="1"
+            step="0.1"
+            value="10"
+            placeholder="Example: 10"
+        >
+    </div>
+
     <div class="speed">
-        <div>Detected Speed</div>
+
+        <div>Estimated Speed</div>
 
         <div class="speed-value" id="speed">
             0
@@ -146,45 +196,106 @@
         <div class="unit">
             km/h
         </div>
+
+    </div>
+
+    <div class="vehicle-list" id="vehicles">
+        <div class="vehicle">
+            <span>No vehicle detected</span>
+            <span>-- km/h</span>
+        </div>
     </div>
 
 </div>
 
 <script>
+
     const video = document.getElementById("camera");
     const statusText = document.getElementById("status");
+    const speedText = document.getElementById("speed");
+    const vehiclesBox = document.getElementById("vehicles");
 
     let stream = null;
 
     async function startCamera() {
+
         try {
-            stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    facingMode: "environment"
-                },
-                audio: false
-            });
+
+            stream =
+                await navigator.mediaDevices.getUserMedia({
+
+                    video: {
+                        facingMode: "environment"
+                    },
+
+                    audio: false
+
+                });
 
             video.srcObject = stream;
-            statusText.textContent = "Camera is running";
+
+            statusText.textContent =
+                "Camera is running";
 
         } catch (error) {
+
             console.error(error);
+
             statusText.textContent =
                 "Camera permission was denied or camera is unavailable.";
+
         }
     }
 
+
     function stopCamera() {
+
         if (stream) {
-            stream.getTracks().forEach(track => track.stop());
+
+            stream
+                .getTracks()
+                .forEach(track => track.stop());
+
             stream = null;
         }
 
         video.srcObject = null;
-        statusText.textContent = "Camera stopped";
+
+        statusText.textContent =
+            "Camera stopped";
+
+        speedText.textContent = "0";
+
+        vehiclesBox.innerHTML = `
+            <div class="vehicle">
+                <span>No vehicle detected</span>
+                <span>-- km/h</span>
+            </div>
+        `;
     }
+
+
+    function showVehicle(
+        type,
+        speed
+    ) {
+
+        vehiclesBox.innerHTML = `
+            <div class="vehicle">
+
+                <span>
+                    ${type}
+                </span>
+
+                <strong>
+                    ${speed.toFixed(1)} km/h
+                </strong>
+
+            </div>
+        `;
+    }
+
 </script>
 
 </body>
-</html>
+    </html>
